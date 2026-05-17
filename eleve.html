@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ExaQuiz — Élève</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- AUDIO -->
+<audio id="a-lobby" src="lobby.mp3" loop preload="auto"></audio>
+<audio id="a-questions" src="questions.mp3" loop preload="auto"></audio>
+<audio id="a-click" src="click.mp3" preload="auto"></audio>
+
+<!-- ═══════════════════════ HOME ÉLÈVE ═══════════════════════ -->
+<div class="view active" id="v-home">
+  <div class="tc" style="margin-bottom:2rem">
+    <div class="display">Exa<span class="yellow">Quiz</span></div>
+    <p class="muted" style="font-size:1rem;margin-top:.25rem">Espace Élève 🎓</p>
+  </div>
+  <div class="card card-sm tc">
+    <p class="muted" style="margin-bottom:1.25rem">Rejoins une session avec le code fourni par ton professeur.</p>
+    <button class="btn btn-yellow btn-full btn-lg" onclick="boot(); showView('v-s-join')">🎓 Rejoindre une session</button>
+    <div class="divider"></div>
+    <p class="muted" style="font-size:.82rem">Tu es professeur ?
+      <a href="prof.html" style="color:#FFD700;font-weight:700;text-decoration:none">Aller à la page prof →</a>
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — JOIN ═══════════════════════ -->
+<div class="view" id="v-s-join">
+  <div class="card card-sm">
+    <button class="btn btn-ghost btn-sm" onclick="sfx(); showView('v-home')" style="margin-bottom:1.25rem">← Retour</button>
+    <h2 style="margin-bottom:.5rem">🎓 Rejoindre une session</h2>
+    <p class="muted" style="font-size:.9rem;margin-bottom:1rem">Entre le code fourni par ton professeur</p>
+    <div class="field">
+      <input type="text" id="s-code" placeholder="AB3K7X" maxlength="6"
+        style="font-size:2.2rem;font-weight:800;letter-spacing:.4em;text-align:center;text-transform:uppercase"
+        onkeydown="if(event.key==='Enter'){sfx();studentJoin()}">
+    </div>
+    <button class="btn btn-yellow btn-full btn-lg" onclick="sfx(); studentJoin()">Rejoindre →</button>
+    <div id="s-join-err" style="color:#E84555;font-size:.88rem;text-align:center;margin-top:.75rem"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — PREVIEW ═══════════════════════ -->
+<div class="view" id="v-s-preview">
+  <div class="card card-sm tc">
+    <div style="font-size:3rem;margin-bottom:.75rem">📚</div>
+    <p class="muted" style="font-size:.9rem;margin-bottom:.35rem">Vous êtes sur le point de rejoindre</p>
+    <h2 id="s-prev-title" style="color:#FFD700;margin-bottom:.35rem"></h2>
+    <p class="muted">créé par <strong id="s-prev-prof" style="color:#fff"></strong></p>
+    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:.65rem 1rem;font-size:.85rem;margin:1.25rem 0">
+      <strong id="s-prev-qcount" class="yellow"></strong> question(s) · Score basé sur la rapidité
+    </div>
+    <button class="btn btn-green btn-full btn-lg" onclick="sfx(); showView('v-s-pseudo')">✓ Confirmer</button>
+    <button class="btn btn-ghost btn-full" onclick="sfx(); showView('v-s-join')" style="margin-top:.6rem">Annuler</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — PSEUDO ═══════════════════════ -->
+<div class="view" id="v-s-pseudo">
+  <div class="card card-sm">
+    <h2 style="margin-bottom:1rem">👤 Choisir un pseudo</h2>
+    <div class="alert-warn">⚠️ Tout pseudo déplacé ou non reconnaissable sera retiré de la session par le professeur.</div>
+    <div class="field">
+      <input type="text" id="s-pseudo" placeholder="Ton prénom ou pseudo" maxlength="20"
+        onkeydown="if(event.key==='Enter'){sfx();studentSetPseudo()}">
+    </div>
+    <button class="btn btn-yellow btn-full btn-lg" onclick="sfx(); studentSetPseudo()">Rejoindre 🎉</button>
+    <div id="s-pseudo-err" style="color:#E84555;font-size:.88rem;text-align:center;margin-top:.75rem"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — LOBBY ═══════════════════════ -->
+<div class="view" id="v-s-lobby">
+  <div class="card card-sm tc">
+    <div style="font-size:2.5rem;margin-bottom:.5rem">🎉</div>
+    <h2 id="s-lobby-title"></h2>
+    <p class="muted" style="margin-top:.4rem;font-size:.9rem">Connecté en tant que <strong id="s-lobby-pseudo" style="color:#FFD700"></strong></p>
+    <div class="divider"></div>
+    <p style="font-size:1.05rem">En attente du professeur<span class="dots"></span></p>
+    <div class="chips" id="s-lobby-chips" style="justify-content:center;margin-top:1rem"></div>
+    <p class="muted" style="font-size:.8rem;margin-top:.75rem" id="s-lobby-count"></p>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — QUESTION ═══════════════════════ -->
+<div class="view top" id="v-s-question" style="padding:0">
+  <div style="width:100%;padding:1rem 1rem .75rem;background:rgba(0,0,0,.3);backdrop-filter:blur(10px)">
+    <div class="timer-wrap" style="margin-bottom:.6rem">
+      <div class="timer-fill" id="s-timer-bar" style="width:100%;background:#2FC97F"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span class="badge bg-cyan" id="s-q-ctr">Q1/1</span>
+      <span style="font-weight:800;font-size:1.05rem" id="s-timer-txt">⏱ 20s</span>
+      <span class="muted" style="font-size:.85rem">Score : <strong id="s-score" class="yellow">0</strong></span>
+    </div>
+  </div>
+  <div style="width:100%;max-width:860px;padding:1rem;flex:1;display:flex;flex-direction:column;gap:.75rem">
+    <div class="card card-lg">
+      <img id="s-q-img" class="img-preview" style="display:none" alt="">
+      <h2 id="s-q-text" style="font-size:1.3rem"></h2>
+    </div>
+    <div class="ans-grid" id="s-ans-grid"></div>
+    <button class="btn btn-yellow btn-full btn-lg" id="s-qcm-submit" style="display:none" onclick="sfx(); submitQCM()">✓ Valider mes réponses</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — WAITING ═══════════════════════ -->
+<div class="view" id="v-s-waiting">
+  <div class="card card-sm tc">
+    <div id="s-fb-icon" style="font-size:4.5rem;margin-bottom:.4rem">✅</div>
+    <div id="s-fb-pts" style="font-family:'Bebas Neue',sans-serif;font-size:3.5rem;color:#FFD700;text-shadow:0 0 25px rgba(255,215,0,.4)">+750</div>
+    <div id="s-fb-msg" style="font-size:1.1rem;margin-top:.25rem">Bonne réponse !</div>
+    <div class="divider"></div>
+    <p class="muted" style="font-size:.9rem">En attente de la prochaine question<span class="dots"></span></p>
+    <div style="margin-top:1rem">
+      <div class="lbl">Score total</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2.5rem;color:#FFD700" id="s-total">0</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — RESULTS ═══════════════════════ -->
+<div class="view" id="v-s-results">
+  <div class="card card-md">
+    <h2 class="tc" style="margin-bottom:1rem">🏆 Résultats</h2>
+    <div class="tc" style="margin-bottom:1rem">
+      <div class="lbl">Ton score final</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:3.5rem;color:#FFD700" id="s-final-score">0</div>
+      <div style="font-size:1.1rem;font-weight:700;margin-top:.25rem" id="s-final-rank"></div>
+    </div>
+    <div class="divider"></div>
+    <h3 style="margin-bottom:.75rem">Classement général</h3>
+    <div class="lb-list scroll" id="s-final-lb"></div>
+    <button class="btn btn-yellow btn-full" onclick="sfx(); location.reload()" style="margin-top:1.25rem">Retour à l'accueil</button>
+  </div>
+</div>
+
+<script src="audio.js"></script>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const SUPA_URL = 'https://sevrfgivcpefyykuffti.supabase.co'
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNldnJmZ2l2Y3BlZnl5a3VmZnRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NDI1NTMsImV4cCI6MjA3ODUxODU1M30.YZnkSHsVWKQEhfU7xYfWyTFmtkM28Zuzdu7Y1sjBXQc'
+const db = createClient(SUPA_URL, SUPA_KEY)
+
+const sfx = window.sfx, showView = window.showView, g = id => document.getElementById(id)
+
+const S = {
+  session:null, player:null, players:[], questions:[],
+  currentQ:-1, answered:false, qcmSel:new Set(), score:0,
+  channels:[], timerInterval:null
+}
+
+function clearChannels() { S.channels.forEach(ch => db.removeChannel(ch)); S.channels = [] }
+function clearTimer() { if (S.timerInterval) { clearInterval(S.timerInterval); S.timerInterval = null } }
+
+async function studentJoin() {
+  const code = g('s-code').value.trim().toUpperCase()
+  g('s-join-err').textContent = ''
+  if (code.length < 4) return g('s-join-err').textContent = 'Code invalide.'
+  const { data, error } = await db.from('sessions').select('*').eq('code',code).single()
+  if (error||!data) return g('s-join-err').textContent = 'Session introuvable.'
+  if (data.status === 'finished') return g('s-join-err').textContent = 'Session terminée.'
+  S.session = data; S.questions = data.questions
+  g('s-prev-title').textContent = data.title
+  g('s-prev-prof').textContent = data.prof_name
+  g('s-prev-qcount').textContent = data.questions.length
+  showView('v-s-preview')
+}
+
+async function studentSetPseudo() {
+  const pseudo = g('s-pseudo').value.trim()
+  g('s-pseudo-err').textContent = ''
+  if (!pseudo || pseudo.length < 2) return g('s-pseudo-err').textContent = 'Pseudo trop court (min 2 caractères).'
+  const { data, error } = await db.from('players').insert({
+    session_id:S.session.id, pseudo, score:0, kicked:false
+  }).select().single()
+  if (error) return g('s-pseudo-err').textContent = 'Erreur : ' + error.message
+  S.player = data; S.score = 0; S.currentQ = -1
+  g('s-lobby-title').textContent = S.session.title
+  g('s-lobby-pseudo').textContent = pseudo
+  setupStudentRealtime()
+  showView('v-s-lobby')
+}
+
+function setupStudentRealtime() {
+  clearChannels()
+  const ch = db.channel('s-' + S.player.id)
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'sessions',filter:`id=eq.${S.session.id}`},p=>onSessUpdate(p.new))
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'players',filter:`id=eq.${S.player.id}`},p=>onPlayerUpdate(p.new))
+    .on('postgres_changes',{event:'*',schema:'public',table:'players',filter:`session_id=eq.${S.session.id}`},()=>fetchSPlayers())
+    .subscribe()
+  S.channels.push(ch)
+  fetchSPlayers()
+}
+
+async function fetchSPlayers() {
+  const { data } = await db.from('players').select('pseudo').eq('session_id',S.session.id).eq('kicked',false)
+  const list = data||[]
+  g('s-lobby-chips').innerHTML = list.map(p=>`<div class="chip">🎓 ${p.pseudo}</div>`).join('')
+  g('s-lobby-count').textContent = `${list.length} joueur(s) connecté(s)`
+}
+
+function onPlayerUpdate(p) {
+  if (p.kicked) {
+    clearChannels(); clearTimer()
+    alert('⚠️ Vous avez été retiré de la session par le professeur.')
+    showView('v-home')
+  }
+}
+
+function onSessUpdate(sess) {
+  S.session = sess
+  if (sess.status === 'finished') { clearTimer(); fetchSResults(); return }
+  if (sess.status === 'playing' && sess.current_question >= 0 && sess.current_question !== S.currentQ) {
+    S.currentQ = sess.current_question
+    S.answered = false; S.qcmSel = new Set()
+    const t0 = sess.question_started_at ? new Date(sess.question_started_at).getTime() : Date.now()
+    renderSQuestion(t0)
+    showView('v-s-question')
+  }
+}
+
+function renderSQuestion(t0) {
+  const q = S.questions[S.currentQ]; if (!q) return
+  g('s-q-ctr').textContent = `Q${S.currentQ+1}/${S.questions.length}`
+  g('s-q-text').textContent = q.text
+  g('s-score').textContent = S.score
+  const img = g('s-q-img')
+  if (q.img) { img.src = q.img; img.style.display='block' } else img.style.display='none'
+  const shapes = ['▲','◆','●','■']
+  g('s-ans-grid').innerHTML = q.choices.map((ch,i)=>`
+    <button class="ans-btn a${i}" id="ab${i}" onclick="sfx();selectAns(${i})">
+      <div class="ans-shape">${shapes[i]}</div>
+      <span>${ch}</span>
+    </button>`).join('')
+  g('s-qcm-submit').style.display = q.type === 'QCM' ? 'block' : 'none'
+  clearTimer(); startTimer(q.time, t0)
+}
+
+function startTimer(limit, t0) {
+  const bar = g('s-timer-bar'), txt = g('s-timer-txt')
+  function tick() {
+    const elapsed = (Date.now()-t0)/1000
+    const rem = Math.max(0, limit-elapsed)
+    const pct = (rem/limit)*100
+    bar.style.width = pct+'%'
+    bar.style.background = pct>50?'#2FC97F':pct>25?'#F3A42E':'#E84555'
+    txt.textContent = `⏱ ${Math.ceil(rem)}s`
+    if (rem <= 0) { clearTimer(); if (!S.answered) submitAns(null, limit, t0) }
+  }
+  tick(); S.timerInterval = setInterval(tick, 250)
+}
+
+function selectAns(ci) {
+  if (S.answered) return
+  const q = S.questions[S.currentQ]
+  if (q.type === 'QCM') {
+    S.qcmSel.has(ci) ? S.qcmSel.delete(ci) : S.qcmSel.add(ci)
+    q.choices.forEach((_,i)=>{
+      const b = g('ab'+i); if(b) b.style.opacity = S.qcmSel.has(i)?'1':'0.45'
+    })
+    if (S.qcmSel.has(ci)) g('ab'+ci).classList.add('selected')
+    else g('ab'+ci).classList.remove('selected')
+  } else {
+    submitAns([ci], S.questions[S.currentQ].time, new Date(S.session.question_started_at).getTime())
+  }
+}
+
+function submitQCM() {
+  if (S.answered || S.qcmSel.size === 0) return
+  submitAns([...S.qcmSel], S.questions[S.currentQ].time, new Date(S.session.question_started_at).getTime())
+}
+
+async function submitAns(sel, limit, t0) {
+  if (S.answered) return
+  S.answered = true; clearTimer()
+  document.querySelectorAll('.ans-btn').forEach(b=>b.disabled=true)
+  const q = S.questions[S.currentQ]
+  const timeTaken = (Date.now()-t0)/1000
+  const isTimeout = sel === null
+
+  let ok = false, pts = 0
+  if (!isTimeout && sel.length > 0) {
+    if (q.type === 'QCM') {
+      const cs = new Set(q.correct), ss = new Set(sel)
+      ok = q.correct.every(c=>ss.has(c)) && sel.every(c=>cs.has(c))
+    } else ok = q.correct.includes(sel[0])
+  }
+  if (ok) pts = Math.max(100, Math.round(1000 - 900 * Math.min(timeTaken,limit)/limit))
+  S.score += pts
+
+  await db.from('answers').insert({
+    session_id:S.session.id, player_id:S.player.id,
+    question_index:S.currentQ,
+    answer:JSON.stringify(sel||[]),
+    time_taken:parseFloat(timeTaken.toFixed(2)), points:pts
+  })
+  await db.from('players').update({score:S.score}).eq('id',S.player.id)
+
+  g('s-fb-icon').textContent = isTimeout?'⏰':ok?'✅':'❌'
+  g('s-fb-pts').textContent  = ok?`+${pts}`:isTimeout?'Temps écoulé':'Mauvaise réponse'
+  g('s-fb-msg').textContent  = ok?'Bonne réponse !':isTimeout?'Tu n\'as pas répondu à temps.':'Dommage...'
+  g('s-total').textContent   = S.score + ' pts'
+  showView('v-s-waiting')
+}
+
+async function fetchSResults() {
+  const { data } = await db.from('players').select('*')
+    .eq('session_id',S.session.id).eq('kicked',false).order('score',{ascending:false})
+  const players = data||[]
+  const rank = players.findIndex(p=>p.id===S.player.id)+1
+  g('s-final-score').textContent = S.score
+  g('s-final-rank').textContent = rank===1?'🥇 1ère place !':rank===2?'🥈 2ème place !':rank===3?'🥉 3ème place !':`${rank}ème place`
+  g('s-final-lb').innerHTML = players.map((p,i)=>`
+    <div class="lb-row ${p.id===S.player.id?'me':''}">
+      <div class="lb-rank">${['🥇','🥈','🥉'][i]||i+1}</div>
+      <div class="lb-name">${p.pseudo}${p.id===S.player.id?' ← toi':''}</div>
+      <div class="lb-score">${p.score} pts</div>
+    </div>`).join('')
+  clearChannels(); showView('v-s-results')
+}
+
+Object.assign(window, { studentJoin, studentSetPseudo, selectAns, submitQCM })
+</script>
+</body>
+</html>
