@@ -13,7 +13,13 @@
   ALTER TABLE sessions REPLICA IDENTITY FULL;
   ALTER TABLE players  REPLICA IDENTITY FULL;
   ALTER TABLE answers  REPLICA IDENTITY FULL;
-  Database → Replication → activer Realtime sur sessions, players, answers
+  CREATE TABLE IF NOT EXISTS exams (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    title text NOT NULL, prof_name text NOT NULL,
+    questions jsonb NOT NULL, uses_count int NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+  );
+  ALTER TABLE exams DISABLE ROW LEVEL SECURITY;
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -33,12 +39,33 @@
     <p class="muted" style="font-size:1rem;margin-top:.25rem">Espace Professeur 📋</p>
   </div>
   <div class="card card-sm tc">
-    <p class="muted" style="margin-bottom:1.25rem">Crée un nouvel examen interactif pour tes élèves.</p>
-    <button class="btn btn-yellow btn-full btn-lg" onclick="boot(); showView('v-t-create')">📋 Créer un examen</button>
+    <p class="muted" style="margin-bottom:1.25rem">Crée un nouvel examen, ou réutilise un examen partagé par un collègue.</p>
+    <button class="btn btn-yellow btn-full btn-lg" onclick="boot(); showView('v-t-create')">📋 Créer un nouvel examen</button>
+    <button class="btn btn-outline-y btn-full btn-lg" onclick="boot(); openLibrary()" style="margin-top:.6rem">📚 Choisir un examen existant</button>
     <div class="divider"></div>
     <p class="muted" style="font-size:.82rem">Tu es élève ?
       <a href="eleve.html" style="color:#00E5FF;font-weight:700;text-decoration:none">Aller à la page élève →</a>
     </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════ TEACHER — LIBRARY ═══════════════════════ -->
+<div class="view" id="v-t-library">
+  <div class="card card-md" style="max-height:90vh;overflow-y:auto;margin:1rem 0">
+    <button class="btn btn-ghost btn-sm" onclick="sfx(); showView('v-home')" style="margin-bottom:1rem">← Retour</button>
+    <h2 style="margin-bottom:.5rem">📚 Bibliothèque d'examens</h2>
+    <p class="muted" style="font-size:.9rem;margin-bottom:1rem">Examens créés par toi ou tes collègues. Clique pour lancer une nouvelle session.</p>
+    <div class="field" style="margin-bottom:1rem">
+      <input type="text" id="lib-search" placeholder="🔍 Rechercher (titre, prof)..." oninput="renderLibrary()">
+    </div>
+    <div class="field-row" style="margin-bottom:1rem">
+      <div class="field">
+        <div class="lbl">Ton nom (pour cette session)</div>
+        <input type="text" id="lib-prof" placeholder="Ex : M. Bernard">
+      </div>
+    </div>
+    <div id="lib-list"></div>
+    <div id="lib-err" style="color:#E84555;font-size:.88rem;text-align:center;margin-top:.75rem"></div>
   </div>
 </div>
 
@@ -243,9 +270,54 @@ async function createSession() {
     current_question:-1, questions
   }).select().single()
   if (error) return g('t-create-err').textContent = 'Erreur Supabase : ' + error.message
+  // Sauvegarde dans la bibliothèque partagée (best-effort)
+  db.from('exams').insert({ title, prof_name:prof, questions }).then(()=>{}, ()=>{})
   S.session = data; S.questions = questions
   g('t-code').textContent = code
   g('t-lobby-h').textContent = `${title} — En attente`
+  setupTeacherRealtime(data.id)
+  showView('v-t-lobby')
+}
+
+// ── BIBLIOTHÈQUE D'EXAMENS ──
+let LIB = []
+async function openLibrary() {
+  showView('v-t-library')
+  g('lib-list').innerHTML = '<p class="muted tc">Chargement...</p>'
+  const { data, error } = await db.from('exams').select('*').order('created_at',{ascending:false})
+  if (error) { g('lib-list').innerHTML = `<p style="color:#E84555">Erreur : ${error.message}</p>`; return }
+  LIB = data || []
+  renderLibrary()
+}
+function renderLibrary() {
+  const q = (g('lib-search').value||'').toLowerCase().trim()
+  const list = LIB.filter(e => !q || e.title.toLowerCase().includes(q) || e.prof_name.toLowerCase().includes(q))
+  if (list.length === 0) { g('lib-list').innerHTML = '<p class="muted tc" style="padding:1rem">Aucun examen dans la bibliothèque.</p>'; return }
+  g('lib-list').innerHTML = list.map(e => `
+    <div class="qb-card" style="display:flex;justify-content:space-between;align-items:center;gap:1rem">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;font-size:1.05rem;color:#FFD700">${e.title.replace(/</g,'&lt;')}</div>
+        <div class="muted" style="font-size:.82rem;margin-top:.2rem">par <strong style="color:#fff">${e.prof_name.replace(/</g,'&lt;')}</strong> · ${e.questions.length} question(s) · utilisé ${e.uses_count||0}×</div>
+      </div>
+      <button class="btn btn-yellow" onclick="sfx();useExam('${e.id}')">▶ Lancer</button>
+    </div>`).join('')
+}
+async function useExam(examId) {
+  const prof = g('lib-prof').value.trim()
+  g('lib-err').textContent = ''
+  if (!prof) return g('lib-err').textContent = 'Entre ton nom avant de lancer une session.'
+  const ex = LIB.find(e => e.id === examId)
+  if (!ex) return g('lib-err').textContent = 'Examen introuvable.'
+  const code = genCode()
+  const { data, error } = await db.from('sessions').insert({
+    code, title: ex.title, prof_name: prof, status:'waiting',
+    current_question:-1, questions: ex.questions
+  }).select().single()
+  if (error) return g('lib-err').textContent = 'Erreur : ' + error.message
+  db.from('exams').update({ uses_count: (ex.uses_count||0)+1 }).eq('id', examId).then(()=>{}, ()=>{})
+  S.session = data; S.questions = ex.questions
+  g('t-code').textContent = code
+  g('t-lobby-h').textContent = `${ex.title} — En attente`
   setupTeacherRealtime(data.id)
   showView('v-t-lobby')
 }
@@ -388,7 +460,8 @@ function renderFinalResults() {
 
 Object.assign(window,{
   addQuestion, removeQuestion, updateQ, updateChoice, toggleCorrect,
-  createSession, teacherStart, teacherReveal, teacherNext, kickPlayer
+  createSession, teacherStart, teacherReveal, teacherNext, kickPlayer,
+  openLibrary, renderLibrary, useExam
 })
 
 addQuestion()
