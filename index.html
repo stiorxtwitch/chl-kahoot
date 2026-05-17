@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ExaQuiz</title>
+<!--
+╔══════════════════════════════════════════════════════════════╗
+║  SQL À EXÉCUTER DANS SUPABASE (SQL Editor) AVANT DE LANCER  ║
+╚══════════════════════════════════════════════════════════════╝
+
+  ALTER TABLE sessions ADD COLUMN IF NOT EXISTS question_started_at timestamptz;
+  ALTER TABLE sessions  DISABLE ROW LEVEL SECURITY;
+  ALTER TABLE players   DISABLE ROW LEVEL SECURITY;
+  ALTER TABLE answers   DISABLE ROW LEVEL SECURITY;
+  ALTER TABLE sessions  REPLICA IDENTITY FULL;
+  ALTER TABLE players   REPLICA IDENTITY FULL;
+  ALTER TABLE answers   REPLICA IDENTITY FULL;
+
+  Puis Database → Replication → activer Realtime sur sessions, players, answers
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:'DM Sans',sans-serif;
+  background:#08080F;
+  color:#fff;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(circle at 20% 80%,rgba(70,23,143,.18) 0%,transparent 55%),
+             radial-gradient(circle at 80% 20%,rgba(0,229,255,.07) 0%,transparent 55%);
+}
+.view{display:none;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;padding:1rem;position:relative;z-index:1}
+.view.active{display:flex}
+.view.top{justify-content:flex-start;padding-top:0}
+
+/* Cards */
+.card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:2rem;width:100%}
+.card-sm{max-width:480px}.card-md{max-width:680px}.card-lg{max-width:980px}.card-xl{max-width:1200px}
+
+/* Typography */
+.display{font-family:'Bebas Neue',sans-serif;font-size:5rem;letter-spacing:.05em;line-height:1}
+h2{font-size:1.4rem;font-weight:800}
+h3{font-size:1.05rem;font-weight:700}
+.lbl{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.45);margin-bottom:.35rem}
+
+/* Inputs */
+input[type=text],input[type=url],select,textarea{
+  width:100%;padding:.7rem 1rem;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);
+  border-radius:12px;color:#fff;font-size:1rem;font-family:'DM Sans',sans-serif;
+  transition:border-color .2s,background .2s;
+}
+input:focus,select:focus{outline:none;border-color:#FFD700;background:rgba(255,215,0,.05)}
+input::placeholder{color:rgba(255,255,255,.3)}
+select option{background:#1a1a2e;color:#fff}
+
+/* Buttons */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:.5rem;
+  padding:.75rem 1.5rem;border:none;border-radius:12px;
+  font-size:.95rem;font-weight:700;cursor:pointer;
+  transition:transform .1s,filter .15s,box-shadow .15s;
+  font-family:'DM Sans',sans-serif;white-space:nowrap;
+}
+.btn:active{transform:scale(.96)}
+.btn-yellow{background:#FFD700;color:#08080F}
+.btn-yellow:hover{box-shadow:0 0 20px rgba(255,215,0,.35)}
+.btn-green{background:#2FC97F;color:#08080F}
+.btn-green:hover{box-shadow:0 0 16px rgba(47,201,127,.35)}
+.btn-red{background:#E84555;color:#fff}
+.btn-blue{background:#1B8EF2;color:#fff}
+.btn-ghost{background:rgba(255,255,255,.09);color:#fff;border:1px solid rgba(255,255,255,.18)}
+.btn-ghost:hover{background:rgba(255,255,255,.14)}
+.btn-outline-y{background:transparent;color:#FFD700;border:2px solid #FFD700}
+.btn-outline-y:hover{background:rgba(255,215,0,.08)}
+.btn-full{width:100%}
+.btn-sm{padding:.4rem .85rem;font-size:.8rem;border-radius:8px}
+.btn-lg{padding:1rem 2rem;font-size:1.05rem;border-radius:14px}
+.btn-group{display:flex;gap:.75rem;flex-wrap:wrap}
+
+/* Field */
+.field{margin-bottom:1rem}
+.field-row{display:flex;gap:.75rem}
+.field-row>.field{flex:1;margin-bottom:0}
+.divider{height:1px;background:rgba(255,255,255,.1);margin:1.25rem 0}
+
+/* Badges */
+.badge{display:inline-block;padding:.22rem .7rem;border-radius:99px;font-size:.73rem;font-weight:700}
+.bg-yellow{background:rgba(255,215,0,.18);color:#FFD700;border:1px solid rgba(255,215,0,.3)}
+.bg-green{background:rgba(47,201,127,.18);color:#2FC97F;border:1px solid rgba(47,201,127,.3)}
+.bg-red{background:rgba(232,69,85,.18);color:#E84555;border:1px solid rgba(232,69,85,.3)}
+.bg-cyan{background:rgba(0,229,255,.12);color:#00E5FF;border:1px solid rgba(0,229,255,.25)}
+
+/* Session code */
+.code-display{
+  font-family:'Bebas Neue',sans-serif;font-size:4.5rem;letter-spacing:.3em;
+  color:#FFD700;text-shadow:0 0 30px rgba(255,215,0,.45);text-align:center;
+}
+
+/* Player chips */
+.chips{display:flex;flex-wrap:wrap;gap:.4rem}
+.chip{
+  display:flex;align-items:center;gap:.35rem;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);
+  color:#fff;padding:.3rem .7rem;border-radius:99px;font-size:.83rem;font-weight:500;
+}
+.chip .x{background:none;border:none;cursor:pointer;color:#E84555;font-weight:800;padding:0;line-height:1;opacity:.7;transition:opacity .15s}
+.chip .x:hover{opacity:1}
+
+/* Timer */
+.timer-wrap{width:100%;height:10px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden}
+.timer-fill{height:100%;border-radius:99px;transition:width .25s linear,background .5s}
+
+/* Answer buttons */
+.ans-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;width:100%}
+.ans-btn{
+  padding:1.1rem 1rem;border:none;border-radius:16px;
+  font-size:.97rem;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;gap:.7rem;
+  color:#fff;font-family:'DM Sans',sans-serif;text-align:left;
+  min-height:78px;transition:transform .15s,box-shadow .2s,opacity .2s;
+  position:relative;overflow:hidden;
+}
+.ans-btn:active{transform:scale(.97)}
+.ans-btn:disabled{cursor:not-allowed;transform:none!important}
+.ans-btn.selected{box-shadow:0 0 0 3px #fff}
+.ans-btn.correct{box-shadow:0 0 0 3px #2FC97F,0 0 20px rgba(47,201,127,.4)!important}
+.ans-btn.wrong{opacity:.35}
+.ans-shape{width:34px;height:34px;border-radius:6px;background:rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0}
+.a0{background:#E84555}.a1{background:#1B8EF2}.a2{background:#F3A42E}.a3{background:#2FC97F}
+
+/* Stats (teacher) */
+.stat-row{display:flex;align-items:center;gap:.65rem;margin-bottom:.5rem}
+.stat-label{width:120px;font-size:.83rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stat-bar-wrap{flex:1;height:26px;background:rgba(255,255,255,.08);border-radius:7px;overflow:hidden}
+.stat-bar{height:100%;border-radius:7px;transition:width .4s ease;min-width:2px}
+.stat-n{width:24px;text-align:right;font-size:.88rem;font-weight:700;opacity:.75}
+
+/* Leaderboard */
+.lb-list{display:flex;flex-direction:column;gap:.45rem}
+.lb-row{display:flex;align-items:center;gap:.7rem;padding:.6rem .9rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px}
+.lb-row.me{border-color:rgba(255,215,0,.4);background:rgba(255,215,0,.08)}
+.lb-rank{font-size:1rem;font-weight:800;width:28px;text-align:center}
+.lb-name{flex:1;font-weight:600;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-score{font-weight:800;color:#FFD700;font-size:.95rem}
+
+/* Question builder */
+.qb-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:1.2rem;margin-bottom:.75rem}
+.qb-head{display:flex;align-items:center;gap:.7rem;margin-bottom:1rem}
+.qb-num{width:26px;height:26px;border-radius:7px;background:#FFD700;color:#08080F;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem;flex-shrink:0}
+.choice-row{display:flex;align-items:center;gap:.55rem;margin-bottom:.45rem}
+.c-dot{width:14px;height:14px;border-radius:4px;flex-shrink:0}
+.c-check{width:17px;height:17px;accent-color:#2FC97F;cursor:pointer;flex-shrink:0}
+
+/* Podium */
+.podium{display:flex;justify-content:center;align-items:flex-end;gap:1rem;margin:1.5rem 0}
+.pod-item{text-align:center}
+.pod-bar{border-radius:10px 10px 0 0;display:flex;align-items:center;justify-content:center;font-size:1.8rem;width:80px}
+.pod-1{height:96px;background:rgba(255,215,0,.18);border:1px solid rgba(255,215,0,.4)}
+.pod-2{height:68px;background:rgba(192,192,192,.12);border:1px solid rgba(192,192,192,.3)}
+.pod-3{height:46px;background:rgba(205,127,50,.12);border:1px solid rgba(205,127,50,.3)}
+.pod-name{font-size:.82rem;font-weight:700;margin-top:.35rem;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pod-score{font-size:.85rem;color:#FFD700;font-weight:800}
+
+/* Misc */
+.tc{text-align:center}
+.muted{color:rgba(255,255,255,.5)}
+.yellow{color:#FFD700}
+.green{color:#2FC97F}
+.scroll{overflow-y:auto;max-height:48vh}
+.scroll::-webkit-scrollbar{width:4px}
+.scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:2px}
+.alert-warn{background:rgba(243,164,46,.12);border:1px solid rgba(243,164,46,.3);color:#F3A42E;padding:.7rem 1rem;border-radius:10px;font-size:.85rem;margin-bottom:1rem}
+.alert-info{background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.22);color:#00E5FF;padding:.7rem 1rem;border-radius:10px;font-size:.85rem;margin-bottom:1rem}
+.dots::after{content:'.';animation:dot 1.5s steps(3) infinite}
+@keyframes dot{0%{content:'.'}33%{content:'..'}66%{content:'...'}}
+.img-preview{width:100%;max-height:180px;object-fit:contain;border-radius:10px;margin-bottom:.75rem}
+.t-q-grid{display:grid;grid-template-columns:1fr 290px;gap:1.25rem;width:100%;max-width:1100px;align-items:start}
+@media(max-width:700px){
+  .t-q-grid,.field-row,.ans-grid{grid-template-columns:1fr!important;flex-direction:column}
+  .display{font-size:3rem}
+  .code-display{font-size:2.8rem}
+}
+</style>
+</head>
+<body>
+
+<!-- AUDIO -->
+<audio id="a-lobby" src="lobby.mp3" loop></audio>
+<audio id="a-questions" src="questions.mp3" loop></audio>
+<audio id="a-click" src="click.mp3"></audio>
+
+<!-- ═══════════════════════ HOME ═══════════════════════ -->
+<div class="view active" id="v-home">
+  <div class="tc" style="margin-bottom:2rem">
+    <div class="display">Exa<span class="yellow">Quiz</span></div>
+    <p class="muted" style="font-size:1rem;margin-top:.25rem">La plateforme d'examens interactifs</p>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;width:100%;max-width:460px">
+    <button class="card card-sm" style="cursor:pointer;border-color:rgba(255,215,0,.3);text-align:center;transition:all .2s"
+      onmouseenter="this.style.borderColor='rgba(255,215,0,.6)'" onmouseleave="this.style.borderColor='rgba(255,215,0,.3)'"
+      onclick="boot(); showView('v-t-create')">
+      <div style="font-size:2.2rem;margin-bottom:.5rem">📋</div>
+      <div style="font-weight:800;font-size:.95rem">Professeur</div>
+      <div class="muted" style="font-size:.78rem;margin-top:.2rem">Créer un examen</div>
+    </button>
+    <button class="card card-sm" style="cursor:pointer;border-color:rgba(0,229,255,.25);text-align:center;transition:all .2s"
+      onmouseenter="this.style.borderColor='rgba(0,229,255,.55)'" onmouseleave="this.style.borderColor='rgba(0,229,255,.25)'"
+      onclick="boot(); showView('v-s-join')">
+      <div style="font-size:2.2rem;margin-bottom:.5rem">🎓</div>
+      <div style="font-weight:800;font-size:.95rem">Élève</div>
+      <div class="muted" style="font-size:.78rem;margin-top:.2rem">Rejoindre une session</div>
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════════════ TEACHER — CREATE ═══════════════════════ -->
+<div class="view" id="v-t-create">
+  <div class="card card-md" style="max-height:90vh;overflow-y:auto;margin:1rem 0">
+    <button class="btn btn-ghost btn-sm" onclick="sfx(); showView('v-home')" style="margin-bottom:1.25rem">← Retour</button>
+    <h2 style="margin-bottom:1.25rem">📋 Créer un questionnaire</h2>
+    <div class="field-row">
+      <div class="field">
+        <div class="lbl">Nom du professeur</div>
+        <input type="text" id="t-prof" placeholder="Ex : M. Bernard">
+      </div>
+      <div class="field">
+        <div class="lbl">Titre de l'examen</div>
+        <input type="text" id="t-title" placeholder="Ex : Contrôle Histoire — Ch.3">
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div id="qb-container"></div>
+    <button class="btn btn-outline-y btn-full" onclick="sfx(); addQuestion()" style="margin-bottom:1rem">+ Ajouter une question</button>
+    <div class="divider"></div>
+    <button class="btn btn-yellow btn-full btn-lg" onclick="sfx(); createSession()">🚀 Créer la session</button>
+    <div id="t-create-err" style="color:#E84555;font-size:.88rem;text-align:center;margin-top:.75rem"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ TEACHER — LOBBY ═══════════════════════ -->
+<div class="view" id="v-t-lobby">
+  <div style="text-align:center;margin-bottom:1.5rem">
+    <div class="lbl" style="font-size:.8rem">Code de session</div>
+    <div class="code-display" id="t-code">------</div>
+    <p class="muted" style="font-size:.85rem;margin-top:.25rem">Partagez ce code avec vos élèves</p>
+  </div>
+  <div class="card card-md">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <h3 id="t-lobby-h">En attente des élèves</h3>
+      <span class="badge bg-yellow" id="t-lobby-count">0 élève</span>
+    </div>
+    <div class="chips" id="t-lobby-chips" style="min-height:50px"></div>
+    <div class="divider"></div>
+    <button class="btn btn-green btn-full btn-lg" id="t-start-btn" onclick="sfx(); teacherStart()" disabled>▶ Lancer l'examen</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════ TEACHER — QUESTION ═══════════════════════ -->
+<div class="view top" id="v-t-question" style="padding:1rem">
+  <div class="t-q-grid">
+    <!-- LEFT -->
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <span class="badge bg-cyan" id="t-q-ctr">Q1/1</span>
+        <span class="muted" style="font-size:.85rem" id="t-q-ans-count">0 réponse(s)</span>
+      </div>
+      <div class="card card-lg" style="margin-bottom:1rem">
+        <img id="t-q-img" class="img-preview" style="display:none" alt="">
+        <h2 id="t-q-text" style="margin-bottom:1.25rem;font-size:1.25rem"></h2>
+        <div id="t-q-stats"></div>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-ghost" id="t-reveal-btn" onclick="sfx(); teacherReveal()">👁 Révéler les réponses</button>
+        <button class="btn btn-yellow" id="t-next-btn" onclick="sfx(); teacherNext()" style="flex:1">Question suivante →</button>
+      </div>
+    </div>
+    <!-- RIGHT -->
+    <div style="display:flex;flex-direction:column;gap:1rem">
+      <div class="card">
+        <h3 style="margin-bottom:.75rem">🏆 Classement</h3>
+        <div class="lb-list" id="t-lb"></div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+          <h3>👥 Élèves</h3>
+          <span class="badge bg-yellow" id="t-q-pcount">0</span>
+        </div>
+        <div class="chips scroll" id="t-q-chips" style="max-height:180px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ TEACHER — RESULTS ═══════════════════════ -->
+<div class="view" id="v-t-results">
+  <div class="card card-md">
+    <h2 class="tc" style="margin-bottom:1.5rem">🏆 Résultats finaux</h2>
+    <div class="podium" id="t-podium"></div>
+    <div class="lb-list scroll" id="t-final-lb"></div>
+    <div class="divider"></div>
+    <button class="btn btn-yellow btn-full" onclick="sfx(); showView('v-home')">Retour à l'accueil</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — JOIN ═══════════════════════ -->
+<div class="view" id="v-s-join">
+  <div class="card card-sm">
+    <button class="btn btn-ghost btn-sm" onclick="sfx(); showView('v-home')" style="margin-bottom:1.25rem">← Retour</button>
+    <h2 style="margin-bottom:.5rem">🎓 Rejoindre une session</h2>
+    <p class="muted" style="font-size:.9rem;margin-bottom:1rem">Entre le code fourni par ton professeur</p>
+    <div class="field">
+      <input type="text" id="s-code" placeholder="AB3K7X" maxlength="6"
+        style="font-size:2.2rem;font-weight:800;letter-spacing:.4em;text-align:center;text-transform:uppercase"
+        onkeydown="if(event.key==='Enter'){sfx();studentJoin()}">
+    </div>
+    <button class="btn btn-yellow btn-full btn-lg" onclick="sfx(); studentJoin()">Rejoindre →</button>
+    <div id="s-join-err" style="color:#E84555;font-size:.88rem;text-align:center;margin-top:.75rem"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — PREVIEW ═══════════════════════ -->
+<div class="view" id="v-s-preview">
+  <div class="card card-sm tc">
+    <div style="font-size:3rem;margin-bottom:.75rem">📚</div>
+    <p class="muted" style="font-size:.9rem;margin-bottom:.35rem">Vous êtes sur le point de rejoindre</p>
+    <h2 id="s-prev-title" style="color:#FFD700;margin-bottom:.35rem"></h2>
+    <p class="muted">créé par <strong id="s-prev-prof" style="color:#fff"></strong></p>
+    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:.65rem 1rem;font-size:.85rem;margin:1.25rem 0">
+      <strong id="s-prev-qcount" class="yellow"></strong> question(s) · Score basé sur la rapidité
+    </div>
+    <button class="btn btn-green btn-full btn-lg" onclick="sfx(); showView('v-s-pseudo')">✓ Confirmer</button>
+    <button class="btn btn-ghost btn-full" onclick="sfx(); showView('v-s-join')" style="margin-top:.6rem">Annuler</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — PSEUDO ═══════════════════════ -->
+<div class="view" id="v-s-pseudo">
+  <div class="card card-sm">
+    <h2 style="margin-bottom:1rem">👤 Choisir un pseudo</h2>
+    <div class="alert-warn">⚠️ Tout pseudo déplacé ou non reconnaissable sera retiré de la session par le professeur.</div>
+    <div class="field">
+      <input type="text" id="s-pseudo" placeholder="Ton prénom ou pseudo" maxlength="20"
+        onkeydown="if(event.key==='Enter'){sfx();studentSetPseudo()}">
+    </div>
+    <button class="btn btn-yellow btn-full btn-lg" onclick="sfx(); studentSetPseudo()">Rejoindre 🎉</button>
+    <div id="s-pseudo-err" style="color:#E84555;font-size:.88rem;text-align:center;margin-top:.75rem"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — LOBBY ═══════════════════════ -->
+<div class="view" id="v-s-lobby">
+  <div class="card card-sm tc">
+    <div style="font-size:2.5rem;margin-bottom:.5rem">🎉</div>
+    <h2 id="s-lobby-title"></h2>
+    <p class="muted" style="margin-top:.4rem;font-size:.9rem">Connecté en tant que <strong id="s-lobby-pseudo" style="color:#FFD700"></strong></p>
+    <div class="divider"></div>
+    <p style="font-size:1.05rem">En attente du professeur<span class="dots"></span></p>
+    <div class="chips" id="s-lobby-chips" style="justify-content:center;margin-top:1rem"></div>
+    <p class="muted" style="font-size:.8rem;margin-top:.75rem" id="s-lobby-count"></p>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — QUESTION ═══════════════════════ -->
+<div class="view top" id="v-s-question" style="padding:0">
+  <div style="width:100%;padding:1rem 1rem .75rem;background:rgba(0,0,0,.3);backdrop-filter:blur(10px)">
+    <div class="timer-wrap" style="margin-bottom:.6rem">
+      <div class="timer-fill" id="s-timer-bar" style="width:100%;background:#2FC97F"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span class="badge bg-cyan" id="s-q-ctr">Q1/1</span>
+      <span style="font-weight:800;font-size:1.05rem" id="s-timer-txt">⏱ 20s</span>
+      <span class="muted" style="font-size:.85rem">Score : <strong id="s-score" class="yellow">0</strong></span>
+    </div>
+  </div>
+  <div style="width:100%;max-width:860px;padding:1rem;flex:1;display:flex;flex-direction:column;gap:.75rem">
+    <div class="card card-lg">
+      <img id="s-q-img" class="img-preview" style="display:none" alt="">
+      <h2 id="s-q-text" style="font-size:1.3rem"></h2>
+    </div>
+    <div class="ans-grid" id="s-ans-grid"></div>
+    <button class="btn btn-yellow btn-full btn-lg" id="s-qcm-submit" style="display:none" onclick="sfx(); submitQCM()">✓ Valider mes réponses</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — WAITING ═══════════════════════ -->
+<div class="view" id="v-s-waiting">
+  <div class="card card-sm tc">
+    <div id="s-fb-icon" style="font-size:4.5rem;margin-bottom:.4rem">✅</div>
+    <div id="s-fb-pts" style="font-family:'Bebas Neue',sans-serif;font-size:3.5rem;color:#FFD700;text-shadow:0 0 25px rgba(255,215,0,.4)">+750</div>
+    <div id="s-fb-msg" style="font-size:1.1rem;margin-top:.25rem">Bonne réponse !</div>
+    <div class="divider"></div>
+    <p class="muted" style="font-size:.9rem">En attente de la prochaine question<span class="dots"></span></p>
+    <div style="margin-top:1rem">
+      <div class="lbl">Score total</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:2.5rem;color:#FFD700" id="s-total">0</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ STUDENT — RESULTS ═══════════════════════ -->
+<div class="view" id="v-s-results">
+  <div class="card card-md">
+    <h2 class="tc" style="margin-bottom:1rem">🏆 Résultats</h2>
+    <div class="tc" style="margin-bottom:1rem">
+      <div class="lbl">Ton score final</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:3.5rem;color:#FFD700" id="s-final-score">0</div>
+      <div style="font-size:1.1rem;font-weight:700;margin-top:.25rem" id="s-final-rank"></div>
+    </div>
+    <div class="divider"></div>
+    <h3 style="margin-bottom:.75rem">Classement général</h3>
+    <div class="lb-list scroll" id="s-final-lb"></div>
+    <button class="btn btn-yellow btn-full" onclick="sfx(); showView('v-home')" style="margin-top:1.25rem">Retour à l'accueil</button>
+  </div>
+</div>
+
+<!-- ═════════════════════════ SCRIPT ═════════════════════════ -->
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const SUPA_URL = 'https://sevrfgivcpefyykuffti.supabase.co'
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNldnJmZ2l2Y3BlZnl5a3VmZnRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NDI1NTMsImV4cCI6MjA3ODUxODU1M30.YZnkSHsVWKQEhfU7xYfWyTFmtkM28Zuzdu7Y1sjBXQc'
+const db = createClient(SUPA_URL, SUPA_KEY)
+
+// ── STATE ──
+const S = {
+  session: null, player: null,
+  players: [], answers: [],
+  currentQ: -1, answered: false,
+  qcmSel: new Set(), score: 0,
+  revealed: false, channels: [],
+  timerInterval: null
+}
+
+// ── AUDIO ──
+const aLobby = document.getElementById('a-lobby')
+const aQues  = document.getElementById('a-questions')
+const aClick = document.getElementById('a-click')
+let booted = false
+
+function boot() { booted = true; sfx() }
+function sfx() { const c = aClick.cloneNode(); c.volume = .55; c.play().catch(() => {}) }
+function playLobby() {
+  if (!booted) return
+  aQues.pause(); aQues.currentTime = 0
+  if (aLobby.paused) aLobby.play().catch(() => {})
+}
+function playQues() {
+  if (!booted) return
+  aLobby.pause(); aLobby.currentTime = 0
+  if (aQues.paused) aQues.play().catch(() => {})
+}
+function stopMusic() {
+  aLobby.pause(); aLobby.currentTime = 0
+  aQues.pause();  aQues.currentTime = 0
+}
+
+// ── VIEWS ──
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'))
+  document.getElementById(id).classList.add('active')
+  if (id === 'v-t-lobby' || id === 'v-s-lobby') playLobby()
+  else if (id === 'v-s-question' || id === 'v-t-question') playQues()
+  else if (id === 'v-t-results' || id === 'v-s-results') {
+    stopMusic()
+    if (booted) setTimeout(() => aLobby.play().catch(() => {}), 400)
+  }
+}
+
+// ── UTILITIES ──
+function genCode() {
+  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  return Array.from({length:6}, () => c[Math.floor(Math.random()*c.length)]).join('')
+}
+function g(id) { return document.getElementById(id) }
+function clearChannels() { S.channels.forEach(ch => db.removeChannel(ch)); S.channels = [] }
+function clearTimer() { if (S.timerInterval) { clearInterval(S.timerInterval); S.timerInterval = null } }
+
+// ── QUESTION BUILDER ──
+let QB = []
+
+function addQuestion() {
+  QB.push({ type:'QCU', text:'', img:'', time:20, choices:['','','',''], correct:[] })
+  renderQB()
+  setTimeout(() => g('qb-container').lastElementChild?.scrollIntoView({behavior:'smooth',block:'start'}), 60)
+}
+
+function removeQuestion(i) { sfx(); QB.splice(i,1); renderQB() }
+
+function updateQ(i, f, v) { QB[i][f] = f === 'time' ? +v : v; if (f === 'type') renderQB() }
+
+function updateChoice(i, ci, v) { QB[i].choices[ci] = v }
+
+function toggleCorrect(i, ci, multi) {
+  if (!multi) { QB[i].correct = [ci] }
+  else {
+    const s = new Set(QB[i].correct)
+    s.has(ci) ? s.delete(ci) : s.add(ci)
+    QB[i].correct = [...s]
+  }
+}
+
+function renderQB() {
+  const colors = ['#E84555','#1B8EF2','#F3A42E','#2FC97F']
+  const shapes = ['▲','◆','●','■']
+  g('qb-container').innerHTML = QB.map((q,i) => {
+    const isVF = q.type === 'VF', isQCM = q.type === 'QCM'
+    const cc = isVF ? ['Vrai','Faux'] : q.choices
+    const rows = (isVF ? 2 : 4)
+    let choices = ''
+    for (let c = 0; c < rows; c++) {
+      const chk = q.correct.includes(c)
+      choices += `<div class="choice-row">
+        <div class="c-dot" style="background:${colors[c]}"></div>
+        ${isVF
+          ? `<span style="flex:1;font-size:.9rem;font-weight:600">${cc[c]}</span>`
+          : `<input type="text" value="${cc[c]}" placeholder="Choix ${c+1}" onchange="updateChoice(${i},${c},this.value)" style="flex:1">`
+        }
+        <input type="${isQCM?'checkbox':'radio'}" name="cr-${i}" class="c-check" ${chk?'checked':''} onchange="toggleCorrect(${i},${c},${isQCM})">
+        <span style="font-size:.72rem;color:#2FC97F;font-weight:700">✓</span>
+      </div>`
+    }
+    return `<div class="qb-card">
+      <div class="qb-head">
+        <div class="qb-num">${i+1}</div>
+        <select style="width:auto" onchange="updateQ(${i},'type',this.value)">
+          <option ${q.type==='QCU'?'selected':''}>QCU</option>
+          <option ${q.type==='QCM'?'selected':''}>QCM</option>
+          <option ${q.type==='VF'?'selected':''}>VF</option>
+        </select>
+        <select style="width:auto" onchange="updateQ(${i},'time',this.value)">
+          ${[10,20,30,60].map(t=>`<option value="${t}" ${q.time===t?'selected':''}>${t}s</option>`).join('')}
+        </select>
+        <button class="btn btn-red btn-sm" style="margin-left:auto" onclick="sfx();removeQuestion(${i})">Supprimer</button>
+      </div>
+      <div class="field">
+        <div class="lbl">Question</div>
+        <input type="text" value="${q.text.replace(/"/g,'&quot;')}" placeholder="Texte de la question..." onchange="updateQ(${i},'text',this.value)">
+      </div>
+      <div class="field">
+        <div class="lbl">Image (URL optionnelle)</div>
+        <input type="url" value="${q.img}" placeholder="https://... ou laisser vide" onchange="updateQ(${i},'img',this.value)">
+      </div>
+      <div class="lbl">Réponses ${isQCM?'(plusieurs correctes, cocher les bonnes)':'(cocher la bonne réponse)'}</div>
+      ${choices}
+    </div>`
+  }).join('')
+}
+
+// ── CREATE SESSION ──
+async function createSession() {
+  const prof = g('t-prof').value.trim()
+  const title = g('t-title').value.trim()
+  g('t-create-err').textContent = ''
+  if (!prof)  return g('t-create-err').textContent = 'Entre le nom du professeur.'
+  if (!title) return g('t-create-err').textContent = 'Entre le titre de l\'examen.'
+  if (QB.length === 0) return g('t-create-err').textContent = 'Ajoute au moins une question.'
+  for (let i = 0; i < QB.length; i++) {
+    const q = QB[i]
+    if (!q.text.trim()) return g('t-create-err').textContent = `Q${i+1} : texte manquant.`
+    if (q.type !== 'VF' && q.choices.filter(c=>c.trim()).length < 2)
+      return g('t-create-err').textContent = `Q${i+1} : au moins 2 choix requis.`
+    if (q.correct.length === 0) return g('t-create-err').textContent = `Q${i+1} : marque la bonne réponse.`
+  }
+
+  // Normalize & re-index choices (skip empty)
+  const questions = QB.map(q => {
+    if (q.type === 'VF') return { ...q, choices:['Vrai','Faux'] }
+    const filled = q.choices.map((c,i)=>({c,i})).filter(({c})=>c.trim())
+    const choices = filled.map(({c})=>c)
+    const imap = {}; filled.forEach(({i},ni)=>{ imap[i]=ni })
+    const correct = q.correct.map(i=>imap[i]).filter(i=>i!==undefined)
+    return { ...q, choices, correct }
+  })
+
+  const code = genCode()
+  const { data, error } = await db.from('sessions').insert({
+    code, title, prof_name:prof, status:'waiting',
+    current_question:-1, questions
+  }).select().single()
+  if (error) return g('t-create-err').textContent = 'Erreur Supabase : ' + error.message
+
+  S.session = data; S.questions = questions
+  g('t-code').textContent = code
+  g('t-lobby-h').textContent = `${title} — En attente`
+  setupTeacherRealtime(data.id)
+  showView('v-t-lobby')
+}
+
+// ── TEACHER REALTIME ──
+function setupTeacherRealtime(sid) {
+  clearChannels()
+  const ch = db.channel('t-' + sid)
+    .on('postgres_changes',{event:'*',schema:'public',table:'players',filter:`session_id=eq.${sid}`},()=>fetchPlayers())
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'answers',filter:`session_id=eq.${sid}`},p=>onNewAnswer(p.new))
+    .subscribe()
+  S.channels.push(ch)
+  fetchPlayers()
+}
+
+async function fetchPlayers() {
+  const { data } = await db.from('players').select('*').eq('session_id',S.session.id).eq('kicked',false).order('score',{ascending:false})
+  S.players = data || []
+  renderTPLayers()
+}
+
+function renderTPLayers() {
+  const n = S.players.length
+  g('t-lobby-count').textContent = `${n} élève${n>1?'s':''}`
+  g('t-lobby-chips').innerHTML = S.players.map(p=>`
+    <div class="chip">${p.pseudo}<button class="x" onclick="sfx();kickPlayer('${p.id}')">✕</button></div>`).join('')
+  g('t-start-btn').disabled = n === 0
+  g('t-q-pcount').textContent = n
+  g('t-q-chips').innerHTML = S.players.map(p=>`
+    <div class="chip">${p.pseudo}<button class="x" onclick="sfx();kickPlayer('${p.id}')">✕</button></div>`).join('')
+  renderLB()
+}
+
+function onNewAnswer(ans) {
+  if (!S.answers.find(a=>a.id===ans.id)) S.answers.push(ans)
+  renderStats()
+  fetchPlayers()
+}
+
+function renderStats() {
+  const q = S.questions[S.currentQ]; if (!q) return
+  const colors = ['#E84555','#1B8EF2','#F3A42E','#2FC97F']
+  const cnt = {}; q.choices.forEach((_,i)=>cnt[i]=0)
+  const thisQ = S.answers.filter(a=>a.question_index===S.currentQ)
+  thisQ.forEach(a=>{
+    const sel = JSON.parse(a.answer)
+    ;(Array.isArray(sel)?sel:[sel]).forEach(ci=>{ if(cnt[ci]!==undefined) cnt[ci]++ })
+  })
+  const answered = new Set(thisQ.map(a=>a.player_id)).size
+  g('t-q-ans-count').textContent = `${answered} / ${S.players.length} réponse(s)`
+  const shapes = ['▲','◆','●','■']
+  g('t-q-stats').innerHTML = q.choices.map((ch,i)=>{
+    const n = cnt[i]||0, pct = S.players.length>0?Math.round(n/S.players.length*100):0
+    const isOk = S.revealed && q.correct.includes(i)
+    return `<div class="stat-row">
+      <div class="stat-label" style="color:${colors[i]}">${shapes[i]} ${ch||`Choix ${i+1}`}</div>
+      <div class="stat-bar-wrap"><div class="stat-bar" style="width:${pct}%;background:${isOk?'#2FC97F':colors[i]};color:rgba(255,255,255,.85)">${pct>15?pct+'%':''}</div></div>
+      <div class="stat-n">${n}</div>
+    </div>`
+  }).join('')
+}
+
+function renderLB() {
+  const top = [...S.players].sort((a,b)=>b.score-a.score).slice(0,6)
+  g('t-lb').innerHTML = top.length ? top.map((p,i)=>`
+    <div class="lb-row">
+      <div class="lb-rank">${['🥇','🥈','🥉'][i]||i+1}</div>
+      <div class="lb-name">${p.pseudo}</div>
+      <div class="lb-score">${p.score}</div>
+    </div>`).join('') : '<p class="muted" style="font-size:.85rem">Aucun score encore</p>'
+}
+
+// ── TEACHER ACTIONS ──
+async function teacherStart() {
+  const now = new Date().toISOString()
+  const { error } = await db.from('sessions').update({
+    status:'playing', current_question:0, question_started_at:now
+  }).eq('id',S.session.id)
+  if (error) return alert('Erreur: ' + error.message)
+  S.currentQ = 0; S.answers = []; S.revealed = false
+  renderTQuestion(); showView('v-t-question')
+}
+
+function renderTQuestion() {
+  const q = S.questions[S.currentQ]; if (!q) return
+  const total = S.questions.length
+  g('t-q-ctr').textContent = `Q${S.currentQ+1}/${total}`
+  g('t-q-text').textContent = q.text
+  g('t-next-btn').textContent = S.currentQ < total-1 ? 'Question suivante →' : 'Terminer l\'examen ✓'
+  const img = g('t-q-img')
+  if (q.img) { img.src = q.img; img.style.display = 'block' } else img.style.display = 'none'
+  S.revealed = false
+  g('t-reveal-btn').disabled = false
+  S.answers = S.answers.filter(a=>a.question_index !== S.currentQ)
+  renderStats(); renderLB(); renderTPLayers()
+}
+
+async function teacherReveal() {
+  S.revealed = true; g('t-reveal-btn').disabled = true; renderStats()
+}
+
+async function teacherNext() {
+  const isLast = S.currentQ >= S.questions.length - 1
+  if (isLast) {
+    await db.from('sessions').update({status:'finished'}).eq('id',S.session.id)
+    await fetchPlayers()
+    renderFinalResults('t'); showView('v-t-results')
+  } else {
+    S.currentQ++
+    await db.from('sessions').update({
+      current_question: S.currentQ,
+      question_started_at: new Date().toISOString()
+    }).eq('id',S.session.id)
+    g('t-reveal-btn').disabled = false
+    renderTQuestion()
+  }
+}
+
+async function kickPlayer(id) {
+  await db.from('players').update({kicked:true}).eq('id',id)
+  fetchPlayers()
+}
+
+function renderFinalResults(who) {
+  const sorted = [...S.players].sort((a,b)=>b.score-a.score)
+  const top3 = sorted.slice(0,3)
+  const podOrder = top3.length >= 2 ? [top3[1],top3[0],top3[2]].filter(Boolean) : top3
+  const cls = ['pod-2','pod-1','pod-3']; const medals = ['🥈','🥇','🥉']
+  if (who==='t') {
+    g('t-podium').innerHTML = podOrder.map((p,i)=>`
+      <div class="pod-item">
+        <div class="pod-bar ${cls[i]}">${medals[i]}</div>
+        <div class="pod-name">${p.pseudo}</div>
+        <div class="pod-score">${p.score}</div>
+      </div>`).join('')
+    g('t-final-lb').innerHTML = sorted.map((p,i)=>`
+      <div class="lb-row">
+        <div class="lb-rank">${['🥇','🥈','🥉'][i]||i+1}</div>
+        <div class="lb-name">${p.pseudo}</div>
+        <div class="lb-score">${p.score} pts</div>
+      </div>`).join('')
+  }
+}
+
+// ── STUDENT JOIN ──
+async function studentJoin() {
+  const code = g('s-code').value.trim().toUpperCase()
+  g('s-join-err').textContent = ''
+  if (code.length < 4) return g('s-join-err').textContent = 'Code invalide.'
+  const { data, error } = await db.from('sessions').select('*').eq('code',code).single()
+  if (error||!data) return g('s-join-err').textContent = 'Session introuvable.'
+  if (data.status === 'finished') return g('s-join-err').textContent = 'Session terminée.'
+  S.session = data; S.questions = data.questions
+  g('s-prev-title').textContent = data.title
+  g('s-prev-prof').textContent = data.prof_name
+  g('s-prev-qcount').textContent = data.questions.length
+  showView('v-s-preview')
+}
+
+async function studentSetPseudo() {
+  const pseudo = g('s-pseudo').value.trim()
+  g('s-pseudo-err').textContent = ''
+  if (!pseudo || pseudo.length < 2) return g('s-pseudo-err').textContent = 'Pseudo trop court (min 2 caractères).'
+  const { data, error } = await db.from('players').insert({
+    session_id:S.session.id, pseudo, score:0, kicked:false
+  }).select().single()
+  if (error) return g('s-pseudo-err').textContent = 'Erreur : ' + error.message
+  S.player = data; S.score = 0; S.currentQ = -1
+  g('s-lobby-title').textContent = S.session.title
+  g('s-lobby-pseudo').textContent = pseudo
+  setupStudentRealtime()
+  showView('v-s-lobby')
+}
+
+// ── STUDENT REALTIME ──
+function setupStudentRealtime() {
+  clearChannels()
+  const ch = db.channel('s-' + S.player.id)
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'sessions',filter:`id=eq.${S.session.id}`},p=>onSessUpdate(p.new))
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'players',filter:`id=eq.${S.player.id}`},p=>onPlayerUpdate(p.new))
+    .on('postgres_changes',{event:'*',schema:'public',table:'players',filter:`session_id=eq.${S.session.id}`},()=>fetchSPlayers())
+    .subscribe()
+  S.channels.push(ch)
+  fetchSPlayers()
+}
+
+async function fetchSPlayers() {
+  const { data } = await db.from('players').select('pseudo').eq('session_id',S.session.id).eq('kicked',false)
+  const list = data||[]
+  g('s-lobby-chips').innerHTML = list.map(p=>`<div class="chip">🎓 ${p.pseudo}</div>`).join('')
+  g('s-lobby-count').textContent = `${list.length} joueur(s) connecté(s)`
+}
+
+function onPlayerUpdate(p) {
+  if (p.kicked) {
+    clearChannels(); clearTimer()
+    alert('⚠️ Vous avez été retiré de la session par le professeur.')
+    showView('v-home')
+  }
+}
+
+function onSessUpdate(sess) {
+  S.session = sess
+  if (sess.status === 'finished') { clearTimer(); fetchSResults(); return }
+  if (sess.status === 'playing' && sess.current_question >= 0 && sess.current_question !== S.currentQ) {
+    S.currentQ = sess.current_question
+    S.answered = false; S.qcmSel = new Set()
+    const t0 = sess.question_started_at ? new Date(sess.question_started_at).getTime() : Date.now()
+    renderSQuestion(t0)
+    showView('v-s-question')
+  }
+}
+
+// ── STUDENT QUESTION ──
+function renderSQuestion(t0) {
+  const q = S.questions[S.currentQ]; if (!q) return
+  g('s-q-ctr').textContent = `Q${S.currentQ+1}/${S.questions.length}`
+  g('s-q-text').textContent = q.text
+  g('s-score').textContent = S.score
+  const img = g('s-q-img')
+  if (q.img) { img.src = q.img; img.style.display='block' } else img.style.display='none'
+  const colors = ['#E84555','#1B8EF2','#F3A42E','#2FC97F']
+  const shapes = ['▲','◆','●','■']
+  g('s-ans-grid').innerHTML = q.choices.map((ch,i)=>`
+    <button class="ans-btn a${i}" id="ab${i}" onclick="sfx();selectAns(${i})">
+      <div class="ans-shape">${shapes[i]}</div>
+      <span>${ch}</span>
+    </button>`).join('')
+  g('s-qcm-submit').style.display = q.type === 'QCM' ? 'block' : 'none'
+  clearTimer(); startTimer(q.time, t0)
+}
+
+function startTimer(limit, t0) {
+  const bar = g('s-timer-bar'), txt = g('s-timer-txt')
+  function tick() {
+    const elapsed = (Date.now()-t0)/1000
+    const rem = Math.max(0, limit-elapsed)
+    const pct = (rem/limit)*100
+    bar.style.width = pct+'%'
+    bar.style.background = pct>50?'#2FC97F':pct>25?'#F3A42E':'#E84555'
+    txt.textContent = `⏱ ${Math.ceil(rem)}s`
+    if (rem <= 0) { clearTimer(); if (!S.answered) submitAns(null, limit, t0) }
+  }
+  tick(); S.timerInterval = setInterval(tick, 250)
+}
+
+function selectAns(ci) {
+  if (S.answered) return
+  const q = S.questions[S.currentQ]
+  if (q.type === 'QCM') {
+    S.qcmSel.has(ci) ? S.qcmSel.delete(ci) : S.qcmSel.add(ci)
+    q.choices.forEach((_,i)=>{
+      const b = g('ab'+i); if(b) b.style.opacity = S.qcmSel.has(i)?'1':'0.45'
+    })
+    if (S.qcmSel.has(ci)) g('ab'+ci).classList.add('selected')
+    else g('ab'+ci).classList.remove('selected')
+  } else {
+    submitAns([ci], S.questions[S.currentQ].time, new Date(S.session.question_started_at).getTime())
+  }
+}
+
+function submitQCM() {
+  if (S.answered || S.qcmSel.size === 0) return
+  submitAns([...S.qcmSel], S.questions[S.currentQ].time, new Date(S.session.question_started_at).getTime())
+}
+
+async function submitAns(sel, limit, t0) {
+  if (S.answered) return
+  S.answered = true; clearTimer()
+  document.querySelectorAll('.ans-btn').forEach(b=>b.disabled=true)
+  const q = S.questions[S.currentQ]
+  const timeTaken = (Date.now()-t0)/1000
+  const isTimeout = sel === null
+
+  let ok = false, pts = 0
+  if (!isTimeout && sel.length > 0) {
+    if (q.type === 'QCM') {
+      const cs = new Set(q.correct), ss = new Set(sel)
+      ok = q.correct.every(c=>ss.has(c)) && sel.every(c=>cs.has(c))
+    } else ok = q.correct.includes(sel[0])
+  }
+  if (ok) pts = Math.max(100, Math.round(1000 - 900 * Math.min(timeTaken,limit)/limit))
+  S.score += pts
+
+  await db.from('answers').insert({
+    session_id:S.session.id, player_id:S.player.id,
+    question_index:S.currentQ,
+    answer:JSON.stringify(sel||[]),
+    time_taken:parseFloat(timeTaken.toFixed(2)), points:pts
+  })
+  await db.from('players').update({score:S.score}).eq('id',S.player.id)
+
+  g('s-fb-icon').textContent = isTimeout?'⏰':ok?'✅':'❌'
+  g('s-fb-pts').textContent  = ok?`+${pts}`:isTimeout?'Temps écoulé':'Mauvaise réponse'
+  g('s-fb-msg').textContent  = ok?'Bonne réponse !':isTimeout?'Tu n\'as pas répondu à temps.':'Dommage...'
+  g('s-total').textContent   = S.score + ' pts'
+  showView('v-s-waiting')
+}
+
+async function fetchSResults() {
+  const { data } = await db.from('players').select('*')
+    .eq('session_id',S.session.id).eq('kicked',false).order('score',{ascending:false})
+  const players = data||[]
+  const rank = players.findIndex(p=>p.id===S.player.id)+1
+  g('s-final-score').textContent = S.score
+  g('s-final-rank').textContent = rank===1?'🥇 1ère place !':rank===2?'🥈 2ème place !':rank===3?'🥉 3ème place !':`${rank}ème place`
+  g('s-final-lb').innerHTML = players.map((p,i)=>`
+    <div class="lb-row ${p.id===S.player.id?'me':''}">
+      <div class="lb-rank">${['🥇','🥈','🥉'][i]||i+1}</div>
+      <div class="lb-name">${p.pseudo}${p.id===S.player.id?' ← toi':''}</div>
+      <div class="lb-score">${p.score} pts</div>
+    </div>`).join('')
+  clearChannels(); showView('v-s-results')
+}
+
+// ── GLOBAL EXPORTS ──
+Object.assign(window,{
+  sfx, boot, showView,
+  addQuestion, removeQuestion, updateQ, updateChoice, toggleCorrect,
+  createSession, teacherStart, teacherReveal, teacherNext, kickPlayer,
+  studentJoin, studentSetPseudo, selectAns, submitQCM
+})
+
+// Init one default question
+addQuestion()
+</script>
+</body>
+</html>
